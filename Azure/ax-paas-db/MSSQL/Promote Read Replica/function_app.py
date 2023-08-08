@@ -2,9 +2,10 @@ import azure.functions as func
 from azure.mgmt.sql import SqlManagementClient
 from azure.identity import ClientSecretCredential
 from azure.mgmt.resource import ResourceManagementClient
-from azure.storage.blob import BlobServiceClient
+from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
 from azure.mgmt.web import WebSiteManagementClient
 import json
+import os
 
 import requests
 import logging
@@ -21,7 +22,7 @@ def failover(rec_res_group_name,app_service_name,web_client,resource_client,clie
     if len(server_list) == 0:
         logging.info("404 : No Server found")
         exit()
-    def update_conn_string(setting_name, new_setting_value): # To Update the connection string in App Service
+    def update_conn_string(setting_name, new_setting_value):
         app_settings = web_client.web_apps.list_application_settings(rec_res_group_name, app_service_name)
 
         app_settings.properties[setting_name] = new_setting_value
@@ -29,7 +30,27 @@ def failover(rec_res_group_name,app_service_name,web_client,resource_client,clie
         web_client.web_apps.update_application_settings(rec_res_group_name, app_service_name,app_settings)
 
         logging.info(f"Updated the application setting '{setting_name}' with the value '{new_setting_value}'.")
-    def partner_server_rg(sql_server_name): # only applicable if the server is in different resource group 
+    def store_json_in_existing_container(json_data, container_name, file_name, connection_string):
+        try:
+            # Create a BlobServiceClient using the connection string
+            blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+
+            # Get the container client
+            container_client = blob_service_client.get_container_client(container_name)
+
+            # Convert JSON data to bytes
+            json_bytes = json.dumps(json_data).encode('utf-8')
+
+            # Create a blob client
+            blob_client = container_client.get_blob_client(file_name)
+
+            # Upload the JSON data to the blob
+            blob_client.upload_blob(json_bytes, overwrite=True)
+
+            logging.info(f"JSON file '{file_name}' uploaded successfully to container '{container_name}'.")
+        except Exception as e:
+            logging.info(f"Error uploading JSON file: {str(e)}")
+    def partner_server_rg(sql_server_name):
         for resource in resource_client.resources.list(filter=f"resourceType eq 'Microsoft.Sql/servers' and name eq '{sql_server_name}'"):
             server_resource_group = resource.id.split('/')[4]  # Extract resource group name from resource ID
             break
@@ -53,9 +74,10 @@ def failover(rec_res_group_name,app_service_name,web_client,resource_client,clie
                 "database_name_pri" : database_name,
                 "link_id"  : database_link_id
             }
+                store_json_in_existing_container(source, "payload", rec_id, "DefaultEndpointsProtocol=https;AccountName=recoveryresourcepayload;AccountKey=t8dJ961d0c/2Y+Hwv+/UYnNyZEzKq2U7zaEuJDQPxu5MSLkX1ldJ6OAtexk8hRZbydqlELsbO99h+AStH3s4/Q==;EndpointSuffix=core.windows.net")
                 logging.info("failover to completed to server %s",replica_server)
-                connection_string = "Driver={ODBC Driver 17 for SQL Server};Server=tcp:"+replica_server+".database.windows.net,1433;Database=main-east-us-db;Uid=sqluser;Pwd=Apnx#1122;Connection Timeout=30;"
-                update_conn_string("MSSQL_STRING", connection_string)
+                connection_string = "DRIVER={ODBC Driver 17 for SQL Server};SERVER=tcp:"+replica_server_rg+".database.windows.net,1433;DATABASE=main-east-us-db;UID=sqluser;PWD=Apnx#1122"
+                update_conn_string("CONNECTION_STRING", connection_string)
     for i in server_list:
         database_a=client.databases.list_by_server(resource_group_name,i)
         for j in database_a:
@@ -115,25 +137,17 @@ def HttpTrigger(req: func.HttpRequest) -> func.HttpResponse:
                 rec_res_group_name = deployment_name+"-"+item['RESOURCE_GROUP'][0]['name']
                 break
 
-	#Service Principal
-        #client_id = "..........................................."
-        #client_secret = "..........................................."
-        #tenant_id = "..........................................."
+        client_id = os.environ["CLIENT_ID"]
+        client_secret = os.environ["CLIENT_SECRET"]
+        tenant_id = os.environ["TENANT_ID"]
+        subscription_id = os.environ["SUBSCRIPTION_ID"]
 
         # Create a client secret credential object
-        #credential = ClientSecretCredential(
-        #    client_id=client_id,
-        #    client_secret=client_secret,
-        #    tenant_id=tenant_id
-        #)
-        
-        #Or Managed Identity
-        from azure.identity import DefaultAzureCredential
-
-	client_id="..................................................."
-
-	credential = DefaultAzureCredential(managed_identity_client_id=client_id)
-        
+        credential = ClientSecretCredential(
+            client_id=client_id,
+            client_secret=client_secret,
+            tenant_id=tenant_id
+        )
 
         client = SqlManagementClient(credential, subscription_id)
         resource_client = ResourceManagementClient(credential, subscription_id)
