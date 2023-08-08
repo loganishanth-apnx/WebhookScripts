@@ -140,7 +140,6 @@ def HttpTrigger(req: func.HttpRequest) -> func.HttpResponse:
         client_id = os.environ["CLIENT_ID"]
         client_secret = os.environ["CLIENT_SECRET"]
         tenant_id = os.environ["TENANT_ID"]
-        subscription_id = os.environ["SUBSCRIPTION_ID"]
 
         # Create a client secret credential object
         credential = ClientSecretCredential(
