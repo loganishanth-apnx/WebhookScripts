@@ -75,18 +75,18 @@ def HttpTrigger(req: func.HttpRequest) -> func.HttpResponse:
             server_name = server.name
             failover_groups = sql_client.failover_groups.list_by_server(resource_group_name, server_name)
             for failover_group in failover_groups:
-                print(failover_group)
+                logging.info(failover_group)
                 for part_server in failover_group.partner_servers:
-                    print(part_server)
+                    logging.info(part_server)
                     if part_server.location.lower().replace(" ", "") == recovery_region:
-                        print(f"Promoting failover for server {server_name}...")
+                        logging.info(f"Promoting failover for server {server_name}...")
                         temp = part_server.id.split("/")
                         part_server_name = temp[-1]
                         
                         sql_client.failover_groups.begin_force_failover_allow_data_loss(resource_group_name, part_server_name , failover_group.name)
-                        print(f"Failover promoted for server {server_name} to {part_server_name}")
+                        logging.info(f"Failover promoted for server {server_name} to {part_server_name}")
                     else:
-                        print(f"Secondary server for failover group {failover_group.name} is not in the West region.")
+                        logging.info(f"Secondary server for failover group {failover_group.name} is not in the West region.")
         logging.info("End Of Function")
 
         return func.HttpResponse(
