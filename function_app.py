@@ -47,6 +47,9 @@ def HttpTrigger(req: func.HttpRequest) -> func.HttpResponse:
                     primary_location = item_data['region'].replace(' ', '').lower()
                     # recovery_subscription_id = item_data['cloudResourceReferenceId'].split("/")[2]
                     break
+        if "resetUser" in request_json:
+            primary_location,recovery_region=recovery_region,primary_location
+
 
         client_id = os.environ["CLIENT_ID"]
         client_secret = os.environ["CLIENT_SECRET"]
@@ -79,6 +82,7 @@ def HttpTrigger(req: func.HttpRequest) -> func.HttpResponse:
                         print(f"Promoting failover for server {server_name}...")
                         temp = part_server.id.split("/")
                         part_server_name = temp[-1]
+                        
                         sql_client.failover_groups.begin_force_failover_allow_data_loss(resource_group_name, part_server_name , failover_group.name)
                         print(f"Failover promoted for server {server_name} to {part_server_name}")
                     else:
